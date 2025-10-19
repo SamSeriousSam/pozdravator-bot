@@ -246,7 +246,7 @@ def main():
             ],
             GENERATE: [CallbackQueryHandler(generate_again, pattern="^generate_again$")]
         },
-        fallbacks=[CommandHandler('start')]
+        fallbacks=[CommandHandler('start', start)],
     )
 
     application.add_handler(conv_handler)
