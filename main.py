@@ -1,4 +1,3 @@
-# main.py
 import os
 import logging
 import asyncio
@@ -51,8 +50,8 @@ import warnings
 from telegram.warnings import PTBUserWarning
 warnings.filterwarnings(action="ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
-# Определяем шаги разговора - ДОБАВЛЕН STYLE
-CATEGORY, SUBCATEGORY, STYLE, EMOJIS, NAME, GENERATE, FEEDBACK = range(7)
+# Определяем шаги разговора
+CATEGORY, SUBCATEGORY, EMOJIS, NAME, GENERATE, FEEDBACK = range(6)
 
 # --- НАЧАЛО: Организация категорий ---
 # Основные категории
@@ -283,7 +282,7 @@ EMOJI_MAP = {
     "company_day": "🏢🎉💼",
     "birth_child": "👶🍼💕",
     "engagement": "💍💕👰🤵",
-    "proposal": "💍💕💐",
+    "proposal": "💍💕🌹",
     "xmas": "🎄🎁🎅❄️",
     "easter": "🐰🥚🌸✝️",
     "victory_day": "🎉🎖️🇷🇺",
@@ -325,7 +324,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         [InlineKeyboardButton(text, callback_data=key)] for key, text in MAIN_CATEGORIES.items()
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    
+    # Проверяем, это команда /start или callback
+    if update.message:
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(welcome_text, reply_markup=reply_markup)
+    
     return CATEGORY
 
 async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -334,24 +339,43 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     category_key = query.data
 
     if category_key == "donate":
-        await query.edit_message_text(
-            "Спасибо, что хотите поддержать проект! 🙏\n\n"
-            "Этот бот не содержит рекламы и разрабатывается на личные средства.\n"
-            "Ваш вклад поможет покрыть расходы на хостинг и дальнейшее развитие.\n\n"
-            "Вы можете поддержать проект через Telegram Stars, нажав кнопку ниже.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Поддержать проект", callback_data="donate_stars")]])
-        )
-        return ConversationHandler.END
+        bot_username = os.getenv("BOT_USERNAME")
+        if bot_username:
+            donate_url = f"https://t.me/{bot_username}?start=donate"
+            keyboard = [
+                [InlineKeyboardButton("Поддержать проект", url=donate_url)],
+                [InlineKeyboardButton("Назад", callback_data="back_to_main_category")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                "Спасибо, что хотите поддержать проект! 🙏\n\n"
+                "Этот бот не содержит рекламы и разрабатывается на личные средства.\n"
+                "Ваш вклад поможет покрыть расходы на хостинг и дальнейшее развитие.\n\n"
+                "Нажмите кнопку ниже, чтобы поддержать проект через Telegram Stars.",
+                reply_markup=reply_markup
+            )
+        else:
+            keyboard = [[InlineKeyboardButton("Назад", callback_data="back_to_main_category")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                "Спасибо, что хотите поддержать проект! 🙏\n\n"
+                "К сожалению, пока невозможно поддержать проект через Telegram Stars. Мы работаем над этим.\n\n"
+                "Установите переменную окружения BOT_USERNAME для активации донатов.",
+                reply_markup=reply_markup
+            )
+        return CATEGORY
 
     if category_key == "feedback":
-        await query.edit_message_text("Напишите ваше сообщение для обратной связи:")
+        keyboard = [[InlineKeyboardButton("Назад", callback_data="back_to_main_category")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text("Напишите ваше сообщение для обратной связи:", reply_markup=reply_markup)
         return FEEDBACK
 
     context.user_data['main_category'] = category_key
 
     subcats = SUBCATEGORIES.get(category_key, {})
     if not subcats:
-        # Если подкатегорий нет, перейти к выбору смайликов (или сразу к генерации для тостов)
+        # Если подкатегорий нет, перейти к выбору смайликов
         context.user_data['subcategory_key'] = category_key
         if category_key == "toast":
             # Для тостов сразу спрашиваем про смайлики
@@ -364,21 +388,15 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.edit_message_text("Добавить смайлики в тост?", reply_markup=reply_markup)
             return EMOJIS
         else:
-            # Для других - спрашиваем стиль
+            # Для других - сразу к смайликам
             keyboard = [
-                [InlineKeyboardButton("Формальный", callback_data="formal")],
-                [InlineKeyboardButton("С юмором", callback_data="humor")],
-                [InlineKeyboardButton("Короткий", callback_data="short")],
-                [InlineKeyboardButton("Торжественный", callback_data="solemn")],
-                [InlineKeyboardButton("Стих", callback_data="verse")],
-                [InlineKeyboardButton("Проза", callback_data="prose")],
-                [InlineKeyboardButton("Тёплый душевный", callback_data="warm")],
-                [InlineKeyboardButton("Развёрнутый", callback_data="detailed")],
+                [InlineKeyboardButton("Да", callback_data="emojis_yes")],
+                [InlineKeyboardButton("Нет", callback_data="emojis_no")],
                 [InlineKeyboardButton("Назад", callback_data="back_to_main_category")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text("Теперь выберите стиль:", reply_markup=reply_markup)
-            return STYLE
+            await query.edit_message_text("Добавить смайлики?", reply_markup=reply_markup)
+            return EMOJIS
 
     keyboard = [
         [InlineKeyboardButton(text, callback_data=key)] for key, text in subcats.items()
@@ -394,47 +412,19 @@ async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE)
     subcategory_key = query.data
     context.user_data['subcategory_key'] = subcategory_key
 
-    # Для тостов - спрашиваем про смайлики
-    if context.user_data.get('main_category') == 'toast':
-        keyboard = [
-            [InlineKeyboardButton("Да", callback_data="emojis_yes")],
-            [InlineKeyboardButton("Нет", callback_data="emojis_no")],
-            [InlineKeyboardButton("Назад", callback_data="back_to_category")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text("Добавить смайлики в тост?", reply_markup=reply_markup)
-        return EMOJIS
-
-    # Для других - спрашиваем стиль
-    keyboard = [
-        [InlineKeyboardButton("Формальный", callback_data="formal")],
-        [InlineKeyboardButton("С юмором", callback_data="humor")],
-        [InlineKeyboardButton("Короткий", callback_data="short")],
-        [InlineKeyboardButton("Торжественный", callback_data="solemn")],
-        [InlineKeyboardButton("Стих", callback_data="verse")],
-        [InlineKeyboardButton("Проза", callback_data="prose")],
-        [InlineKeyboardButton("Тёплый душевный", callback_data="warm")],
-        [InlineKeyboardButton("Развёрнутый", callback_data="detailed")],
-        [InlineKeyboardButton("Назад", callback_data="back_to_category")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("Теперь выберите стиль:", reply_markup=reply_markup)
-    return STYLE
-
-# ДОБАВЛЕНА ФУНКЦИЯ choose_style
-async def choose_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    style = query.data
-    context.user_data['style'] = style
-
+    # Для всех категорий спрашиваем про смайлики
     keyboard = [
         [InlineKeyboardButton("Да", callback_data="emojis_yes")],
         [InlineKeyboardButton("Нет", callback_data="emojis_no")],
-        [InlineKeyboardButton("Назад", callback_data="back_to_subcategory")]
+        [InlineKeyboardButton("Назад", callback_data="back_to_category")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("Добавить смайлики?", reply_markup=reply_markup)
+    
+    if context.user_data.get('main_category') == 'toast':
+        await query.edit_message_text("Добавить смайлики в тост?", reply_markup=reply_markup)
+    else:
+        await query.edit_message_text("Добавить смайлики?", reply_markup=reply_markup)
+    
     return EMOJIS
 
 async def choose_emojis(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -448,30 +438,11 @@ async def choose_emojis(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     keyboard = [
         [InlineKeyboardButton("Пропустить", callback_data="skip_name")],
-        [InlineKeyboardButton("Назад", callback_data="back_to_style")]
+        [InlineKeyboardButton("Назад", callback_data="back_to_emojis")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text("Введите имя или уточнение (например, 'для коллеги', 'для мамы'), или нажмите 'Пропустить':", reply_markup=reply_markup)
     return NAME
-
-# ДОБАВЛЕНА ФУНКЦИЯ back_to_style
-async def back_to_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    keyboard = [
-        [InlineKeyboardButton("Формальный", callback_data="formal")],
-        [InlineKeyboardButton("С юмором", callback_data="humor")],
-        [InlineKeyboardButton("Короткий", callback_data="short")],
-        [InlineKeyboardButton("Торжественный", callback_data="solemn")],
-        [InlineKeyboardButton("Стих", callback_data="verse")],
-        [InlineKeyboardButton("Проза", callback_data="prose")],
-        [InlineKeyboardButton("Тёплый душевный", callback_data="warm")],
-        [InlineKeyboardButton("Развёрнутый", callback_data="detailed")],
-        [InlineKeyboardButton("Назад", callback_data="back_to_category")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("Теперь выберите стиль:", reply_markup=reply_markup)
-    return STYLE
 
 async def back_to_main_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -503,94 +474,63 @@ async def back_to_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await query.edit_message_text(f"Выбрана категория: {MAIN_CATEGORIES[category_key]}\nВыберите подкатегорию:", reply_markup=reply_markup)
             return SUBCATEGORY
         else:
-            # Если подкатегорий нет, вернуться к выбору стиля (или смайликов для тостов)
-            if category_key == "toast":
-                keyboard = [
-                    [InlineKeyboardButton("Да", callback_data="emojis_yes")],
-                    [InlineKeyboardButton("Нет", callback_data="emojis_no")],
-                    [InlineKeyboardButton("Назад", callback_data="back_to_main_category")]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await query.edit_message_text("Добавить смайлики в тост?", reply_markup=reply_markup)
-                return EMOJIS
-            else:
-                # Стиль
-                keyboard = [
-                    [InlineKeyboardButton("Формальный", callback_data="formal")],
-                    [InlineKeyboardButton("С юмором", callback_data="humor")],
-                    [InlineKeyboardButton("Короткий", callback_data="short")],
-                    [InlineKeyboardButton("Торжественный", callback_data="solemn")],
-                    [InlineKeyboardButton("Стих", callback_data="verse")],
-                    [InlineKeyboardButton("Проза", callback_data="prose")],
-                    [InlineKeyboardButton("Тёплый душевный", callback_data="warm")],
-                    [InlineKeyboardButton("Развёрнутый", callback_data="detailed")],
-                    [InlineKeyboardButton("Назад", callback_data="back_to_main_category")]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await query.edit_message_text("Теперь выберите стиль:", reply_markup=reply_markup)
-                return STYLE
+            # Если подкатегорий нет, вернуться к главному меню
+            return await back_to_main_category(update, context)
     else:
-        return await start(update, context)
+        return await back_to_main_category(update, context)
 
-async def back_to_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def back_to_emojis(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    category_key = context.user_data.get('main_category')
-    if category_key:
-        subcats = SUBCATEGORIES.get(category_key, {})
-        if subcats:
-            keyboard = [
-                [InlineKeyboardButton(text, callback_data=key)] for key, text in subcats.items()
-            ]
-            keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_main_category")])
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text(f"Выбрана категория: {MAIN_CATEGORIES[category_key]}\nВыберите подкатегорию:", reply_markup=reply_markup)
-            return SUBCATEGORY
-        else:
-            # Если подкатегорий нет, вернуться к выбору основной категории
-            keyboard = [
-                [InlineKeyboardButton(text, callback_data=key)] for key, text in MAIN_CATEGORIES.items()
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            welcome_text = (
-                "Привет! 👋\n\n"
-                "Я помогу вам быстро и красиво поздравить кого угодно.\n"
-                "Выберите, что вас интересует:"
-            )
-            await query.edit_message_text(welcome_text, reply_markup=reply_markup)
-            return CATEGORY
+    
+    # Возвращаемся к выбору смайликов
+    keyboard = [
+        [InlineKeyboardButton("Да", callback_data="emojis_yes")],
+        [InlineKeyboardButton("Нет", callback_data="emojis_no")],
+        [InlineKeyboardButton("Назад", callback_data="back_to_category")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if context.user_data.get('main_category') == 'toast':
+        await query.edit_message_text("Добавить смайлики в тост?", reply_markup=reply_markup)
     else:
-        return await start(update, context)
+        await query.edit_message_text("Добавить смайлики?", reply_markup=reply_markup)
+    
+    return EMOJIS
 
 async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     name = update.message.text
     context.user_data['name'] = name
+    
+    # Отправляем сообщение о генерации
+    sent_message = await update.message.reply_text("Генерирую... ⏳")
+    context.user_data['generating_message_id'] = sent_message.message_id
+    
     await generate_message(update, context)
-    return ConversationHandler.END
+    return GENERATE
 
 async def skip_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
     context.user_data['name'] = None
+    await query.edit_message_text("Генерирую... ⏳")
     await generate_message_callback(update, context)
-    return ConversationHandler.END
+    return GENERATE
 
 async def generate_message_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
-    await query.edit_message_text("Генерирую... ⏳")
     await generate_message(query, context)
+    return GENERATE
 
 async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # Проверяем, является ли update объектом CallbackQuery
-    if hasattr(update, 'from_user'):
+    if hasattr(update, 'from_user') and hasattr(update, 'message'):
         # Это CallbackQuery
         user_id = update.from_user.id
-        # Для отправки сообщения используем query.message.reply_text
         message_obj = update.message
     else:
         # Это обычный Update
         user_id = update.effective_user.id
-        # Для отправки сообщения используем update.message.reply_text
         message_obj = update.message
 
     # Проверка лимита
@@ -602,10 +542,9 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await message_obj.reply_text(f"Превышен лимит запросов. Попробуйте через {minutes_left} мин {seconds_left} сек.")
         else:
             await message_obj.reply_text("Превышен лимит запросов. Попробуйте позже.")
-        return ConversationHandler.END
+        return GENERATE
 
     subcategory_key = context.user_data.get('subcategory_key')
-    style = context.user_data.get('style', 'prose')
     name = context.user_data.get('name', "друга")
     emojis = context.user_data.get('emojis', False)
 
@@ -638,20 +577,8 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         system_prompt = "Ты — профессиональный автор тостов. Пиши на русском языке. Возвращай 3 популярных, существующих тоста в виде пронумерованного списка. Используй короткие тире (-). Если разрешены смайлики, распредели их равномерно по всем трём вариантам, от 10 до 20 штук в каждом, чтобы они были уместны и не повторялись часто внутри одного варианта."
     else:
         # Промт для поздравлений
-        style_map = {
-            "formal": "формальном",
-            "humor": "с юмором",
-            "short": "коротком",
-            "solemn": "торжественном",
-            "verse": "стихах",
-            "prose": "прозе",
-            "warm": "тёплом душевном",
-            "detailed": "развёрнутом"
-        }
-        style_text = style_map.get(style, "прозе")
-        
         prompt = f"""
-Создай 3 разных {category_internal} в {style_text} стиле.
+Создай 3 разных {category_internal} в прозе или стихе.
 {emoji_instruction}
 Адресат: {name_part}.
 Язык: русский.
@@ -697,10 +624,12 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Кнопки "Ещё" и "Начать сначала"
     keyboard = [
         [InlineKeyboardButton("Ещё варианты", callback_data="generate_again")],
-        [InlineKeyboardButton("Начать сначала", callback_data="back_to_main_category")]
+        [InlineKeyboardButton("Начать сначала", callback_data="restart_bot")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await message_obj.reply_text("Дополнительные действия:", reply_markup=reply_markup)
+    
+    # Возвращаем GENERATE, чтобы кнопки работали
     return GENERATE
 
 async def generate_again(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -708,6 +637,27 @@ async def generate_again(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.answer()
     await query.edit_message_text("Генерирую новые... ⏳")
     await generate_message(query, context)
+    return GENERATE
+
+async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Перезапуск бота - возврат к главному меню"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Очищаем user_data
+    context.user_data.clear()
+    
+    welcome_text = (
+        "Привет! 👋\n\n"
+        "Я помогу вам быстро и красиво поздравить кого угодно.\n"
+        "Выберите, что вас интересует:"
+    )
+    keyboard = [
+        [InlineKeyboardButton(text, callback_data=key)] for key, text in MAIN_CATEGORIES.items()
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(welcome_text, reply_markup=reply_markup)
+    return CATEGORY
 
 async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     feedback_text = update.message.text
@@ -718,14 +668,20 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     admin_id = os.getenv("ADMIN_TELEGRAM_ID")
     if admin_id:
         try:
-            await context.bot.send_message(chat_id=int(admin_id), text=f"Обратная связь от @{user.username} (ID: {user.id}):\n\n{feedback_text}")
-            await update.message.reply_text("Спасибо за ваше сообщение! Мы его получили.")
+            await context.bot.send_message(
+                chat_id=int(admin_id), 
+                text=f"Обратная связь от @{user.username} (ID: {user.id}):\n\n{feedback_text}"
+            )
+            await update.message.reply_text("Спасибо за ваше сообщение! Мы его получили. ✅")
         except Exception as e:
             logger.error(f"Ошибка при отправке обратной связи админу: {e}")
             await update.message.reply_text("Спасибо за ваше сообщение! (Ошибка при отправке админу)")
     else:
-        logger.info(f"Feedback received, but ADMIN_TELEGRAM_ID not set. Message: {feedback_text}")
-        await update.message.reply_text("Спасибо за ваше сообщение! (Admin ID не задан, но сообщение получено)")
+        logger.warning(f"Feedback received, but ADMIN_TELEGRAM_ID not set. Message: {feedback_text}")
+        await update.message.reply_text(
+            "Спасибо за ваше сообщение! ✅\n\n"
+            "⚠️ Внимание администратору: установите переменную окружения ADMIN_TELEGRAM_ID для получения сообщений обратной связи."
+        )
 
     return ConversationHandler.END
 
@@ -736,7 +692,10 @@ async def handle_donate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = os.getenv("BOT_USERNAME")
     if bot_username:
         donate_url = f"https://t.me/{bot_username}?start=donate"
-        keyboard = [[InlineKeyboardButton("Поддержать проект", url=donate_url)]]
+        keyboard = [
+            [InlineKeyboardButton("Поддержать проект", url=donate_url)],
+            [InlineKeyboardButton("Назад", callback_data="back_to_main_category")]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             "Спасибо, что хотите поддержать проект! 🙏\n\n"
@@ -746,11 +705,14 @@ async def handle_donate(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
     else:
+        keyboard = [[InlineKeyboardButton("Назад", callback_data="back_to_main_category")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             "Спасибо, что хотите поддержать проект! 🙏\n\n"
-            "К сожалению, пока невозможно поддержать проект через Telegram Stars. Мы работаем над этим."
+            "К сожалению, пока невозможно поддержать проект через Telegram Stars. Мы работаем над этим.\n\n"
+            "⚠️ Внимание администратору: установите переменную окружения BOT_USERNAME для активации донатов.",
+            reply_markup=reply_markup
         )
-
 # --- КОНЕЦ: Обработчик доната ---
 
 def main():
@@ -759,31 +721,34 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            CATEGORY: [CallbackQueryHandler(choose_category)],
+            CATEGORY: [
+                CallbackQueryHandler(choose_category),
+                CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
+            ],
             SUBCATEGORY: [
                 CallbackQueryHandler(choose_subcategory),
                 CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
             ],
-            STYLE: [
-                CallbackQueryHandler(choose_style),
-                CallbackQueryHandler(back_to_category, pattern="^back_to_category$"),
-            ],
             EMOJIS: [
-                CallbackQueryHandler(choose_emojis),
-                CallbackQueryHandler(back_to_style, pattern="^back_to_style$"),
+                CallbackQueryHandler(choose_emojis, pattern="^emojis_(yes|no)$"),
                 CallbackQueryHandler(back_to_category, pattern="^back_to_category$"),
+                CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
             ],
             NAME: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name),
                 CallbackQueryHandler(skip_name, pattern="^skip_name$"),
-                CallbackQueryHandler(back_to_style, pattern="^back_to_style$"),
+                CallbackQueryHandler(back_to_emojis, pattern="^back_to_emojis$"),
+                CallbackQueryHandler(back_to_category, pattern="^back_to_category$"),
+                CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
             ],
             GENERATE: [
                 CallbackQueryHandler(generate_again, pattern="^generate_again$"),
+                CallbackQueryHandler(restart_bot, pattern="^restart_bot$"),
                 CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
             ],
             FEEDBACK: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_feedback),
+                CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
             ],
         },
         fallbacks=[CommandHandler('start', start)]
@@ -792,6 +757,7 @@ def main():
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(handle_donate, pattern="^donate_stars$"))
 
+    logger.info("Бот запущен и готов к работе!")
     application.run_polling()
 
 if __name__ == '__main__':
