@@ -342,13 +342,31 @@ async def skip_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def generate_message_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.edit_message_text("Генерирую поздравления...")
-    await generate_message(query, context)
+    # Передаём query (CallbackQuery), а не update (Update)
+    # Но внутри generate_message нам нужен user_id. Он доступен как query.from_user.id
+    # Поэтому вызываем generate_message с query и context
+    # Но generate_message ожидает update (Update), чтобы получить update.effective_user.id
+    # Нам нужно изменить generate_message, чтобы он работал с CallbackQuery или Update
+    await generate_message(query, context) # Передаём query, как и раньше, но исправим generate_message
 
 async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    user_id = update.effective_user.id
+    # Проверяем, является ли update объектом CallbackQuery
+    # Если да, используем query.from_user.id, иначе update.effective_user.id
+    if hasattr(update, 'from_user'):
+        # Это CallbackQuery
+        user_id = update.from_user.id
+        # Для отправки сообщения используем query.message.reply_text
+        message_obj = update.message
+    else:
+        # Это обычный Update
+        user_id = update.effective_user.id
+        # Для отправки сообщения используем update.message.reply_text
+        message_obj = update.message
+
     # Проверка лимита
     if is_rate_limited(user_id):
-        await update.message.reply_text("Превышен лимит запросов. Попробуйте позже.")
+        # Используем message_obj для отправки сообщения
+        await message_obj.reply_text("Превышен лимит запросов. Попробуйте позже.")
         return ConversationHandler.END
 
     subcategory_key = context.user_data.get('subcategory_key')
@@ -400,11 +418,11 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 clean_part = part.strip()
                 if clean_part.startswith(("1.", "2.", "3.")):
                     clean_part = clean_part[2:].strip()
-                await update.message.reply_text(clean_part)
+                await message_obj.reply_text(clean_part) # Используем message_obj
 
     except Exception as e:
         logger.error(f"Ошибка при генерации: {e}")
-        await update.message.reply_text("Ошибка при генерации поздравления. Попробуйте ещё раз.")
+        await message_obj.reply_text("Ошибка при генерации поздравления. Попробуйте ещё раз.")
 
     # Кнопки "Ещё" и "Назад"
     keyboard = [
@@ -412,7 +430,7 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         [InlineKeyboardButton("Назад", callback_data="back_to_category")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Дополнительные действия:", reply_markup=reply_markup)
+    await message_obj.reply_text("Дополнительные действия:", reply_markup=reply_markup) # Используем message_obj
     return GENERATE
 
 async def generate_again(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
