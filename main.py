@@ -11,11 +11,10 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ContextTypes,
-    MessageHandler
 )
 import openai
 from datetime import datetime, timedelta
-import hashlib
+import random
 
 # --- НАЧАЛО: Импорт и настройка кэширования для лимита запросов ---
 # pip install aiocache (если будет использоваться)
@@ -47,12 +46,18 @@ logger = logging.getLogger(__name__)
 # Подавляем httpx логи
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+# Подавляем PTBUserWarning для per_message
+import warnings
+from telegram.warnings import PTBUserWarning
+warnings.filterwarnings(action="ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
+
 # Определяем шаги разговора
 CATEGORY, SUBCATEGORY, STYLE, EMOJIS, NAME, GENERATE, FEEDBACK = range(7)
 
 # --- НАЧАЛО: Организация категорий ---
 # Основные категории
 MAIN_CATEGORIES = {
+    "toast": "🥂 Тосты",
     "birthday": "🎂 Дни рождения",
     "professional": "💼 Рабочие и профессиональные",
     "seasonal": "🎄 Календарные / сезонные",
@@ -64,6 +69,16 @@ MAIN_CATEGORIES = {
 
 # Подкатегории
 SUBCATEGORIES = {
+    "toast": {
+        "toast_corporate": "На корпоративе",
+        "toast_wedding": "На свадьбе",
+        "toast_new_year": "На Новый год",
+        "toast_birthday": "На день рождения",
+        "toast_farewell": "Прощальный",
+        "toast_cocktail": "Коктейльный час",
+        "toast_romantic": "Романтический",
+        "toast_funny": "С юмором",
+    },
     "birthday": {
         "bd_gen": "универсальное",
         "bd_friend": "для друзей",
@@ -142,6 +157,14 @@ SUBCATEGORIES = {
 
 # Внутренние значения для GPT
 CATEGORY_INTERNAL = {
+    "toast_corporate": "тост на корпоративе",
+    "toast_wedding": "тост на свадьбе",
+    "toast_new_year": "тост на Новый год",
+    "toast_birthday": "тост на день рождения",
+    "toast_farewell": "прощальный тост",
+    "toast_cocktail": "тост на коктейльном часу",
+    "toast_romantic": "романтический тост",
+    "toast_funny": "тост с юмором",
     "bd_gen": "день рождения",
     "bd_friend": "день рождения для друзей",
     "bd_relatives": "день рождения для родных",
@@ -234,6 +257,14 @@ STYLE_INTERNAL = {
 
 # --- НАЧАЛО: Смайлики для категорий ---
 EMOJI_MAP = {
+    "toast_corporate": "🥂🍻👨‍💼👩‍💼🎉",
+    "toast_wedding": "🥂💍👰🤵💐",
+    "toast_new_year": "🥂🍾🎆🎉",
+    "toast_birthday": "🥂🎂🎈🎁",
+    "toast_farewell": "🥂👋✈️🎉",
+    "toast_cocktail": "🥂🍸🍹",
+    "toast_romantic": "🥂💕🌹",
+    "toast_funny": "🥂😂🎉",
     "birthday": "🎉🎂🎈🎁🎊",
     "new_year": "🎄❄️⛄🎁✨",
     "wedding": "💍👰🤵💐💒",
@@ -335,7 +366,7 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "Этот бот не содержит рекламы и разрабатывается на личные средства.\n"
             "Ваш вклад поможет покрыть расходы на хостинг и дальнейшее развитие.\n\n"
             "Вы можете поддержать проект через Telegram Stars, нажав кнопку ниже.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Поддержать проект", callback_data="donate_stars")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Поддержать проект", url="https://t.me/PozdravatorBot?start=donate")]]) # Используем URL для вызова доната
         )
         return ConversationHandler.END
 
@@ -428,13 +459,23 @@ async def back_to_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     category_key = context.user_data.get('main_category')
     if category_key:
         subcats = SUBCATEGORIES.get(category_key, {})
-        keyboard = [
-            [InlineKeyboardButton(text, callback_data=key)] for key, text in subcats.items()
-        ]
-        keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_main_category")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(f"Выбрана категория: {MAIN_CATEGORIES[category_key]}\nВыберите подкатегорию:", reply_markup=reply_markup)
-        return SUBCATEGORY
+        if subcats:
+            keyboard = [
+                [InlineKeyboardButton(text, callback_data=key)] for key, text in subcats.items()
+            ]
+            keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_main_category")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(f"Выбрана категория: {MAIN_CATEGORIES[category_key]}\nВыберите подкатегорию:", reply_markup=reply_markup)
+            return SUBCATEGORY
+        else:
+            # Если подкатегорий нет, вернуться к выбору стиля
+            keyboard = [
+                [InlineKeyboardButton(text, callback_data=key)] for key, text in STYLES.items()
+            ]
+            keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_main_category")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text("Теперь выберите стиль:", reply_markup=reply_markup)
+            return STYLE
     else:
         return await start(update, context)
 
@@ -444,13 +485,22 @@ async def back_to_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE
     category_key = context.user_data.get('main_category')
     if category_key:
         subcats = SUBCATEGORIES.get(category_key, {})
-        keyboard = [
-            [InlineKeyboardButton(text, callback_data=key)] for key, text in subcats.items()
-        ]
-        keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_main_category")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(f"Выбрана категория: {MAIN_CATEGORIES[category_key]}\nВыберите подкатегорию:", reply_markup=reply_markup)
-        return SUBCATEGORY
+        if subcats:
+            keyboard = [
+                [InlineKeyboardButton(text, callback_data=key)] for key, text in subcats.items()
+            ]
+            keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_main_category")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(f"Выбрана категория: {MAIN_CATEGORIES[category_key]}\nВыберите подкатегорию:", reply_markup=reply_markup)
+            return SUBCATEGORY
+        else:
+            # Если подкатегорий нет, вернуться к выбору основной категории
+            keyboard = [
+                [InlineKeyboardButton(text, callback_data=key)] for key, text in MAIN_CATEGORIES.items()
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text("Привет! Выберите, что вас интересует:", reply_markup=reply_markup)
+            return CATEGORY
     else:
         return await start(update, context)
 
@@ -517,12 +567,12 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     # Выбираем смайлики на основе подкатегории
     emoji_string = EMOJI_MAP.get(subcategory_key, EMOJI_MAP.get(category_internal.split()[0], EMOJI_MAP["default"])) if emojis else ""
-    emoji_instruction = f"Разрешено использовать следующие смайлики по смыслу: {emoji_string}" if emojis else "Не использовать смайлы."
+    emoji_instruction = f"Разрешено использовать следующие смайлики: {emoji_string}. Распредели их равномерно по всем трём вариантам, от 5 до 15 штук в каждом, чтобы они были уместны и не повторялись часто внутри одного варианта." if emojis else "Не использовать смайлы."
 
     name_part = f"поздравь {name}" if name else "поздравление для друга"
     prompt = f"""
-Создай 3 разных поздравления в прозе или стихе (в зависимости от стиля) по случаю "{category_internal}".
-Стиль поздравления: {style_internal}.
+Создай 3 разных {category_internal} в прозе или стихе (в зависимости от стиля).
+Стиль: {style_internal}.
 {emoji_instruction}
 Адресат: {name_part}.
 Язык: русский.
@@ -535,7 +585,6 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 - Не использовать "ChatGPT", "OpenAI" или подобные обращения.
 - Варианты должны быть короткими и по делу.
 - Всегда возвращай 3 варианта в виде пронумерованного списка.
-- Если разрешены смайлики, распредели их равномерно по всем трём вариантам, чтобы они были уместны и не повторялись часто внутри одного варианта.
 """
 
     try:
@@ -543,10 +592,10 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         response = await client.chat.completions.create(
             model="gpt-4o-mini", # Используем более умную модель
             messages=[
-                {"role": "system", "content": "Ты — профессиональный автор поздравлений и тостов. Пиши на русском языке. Не используй восклицательные знаки подряд (макс. 1), избегай шаблонов 'желаю счастья, здоровья'. Всегда возвращай 3 варианта в виде пронумерованного списка. Используй короткие тире (-). Если разрешены смайлики, распредели их равномерно по всем трём вариантам, чтобы они были уместны и не повторялись часто внутри одного варианта."},
+                {"role": "system", "content": "Ты — профессиональный автор поздравлений и тостов. Пиши на русском языке. Не используй восклицательные знаки подряд (макс. 1), избегай шаблонов 'желаю счастья, здоровья'. Всегда возвращай 3 варианта в виде пронумерованного списка. Используй короткие тире (-). Если разрешены смайлики, распредели их равномерно по всем трём вариантам, от 5 до 15 штук в каждом, чтобы они были уместны и не повторялись часто внутри одного варианта."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=1000,
+            max_tokens=1500, # Увеличим токены для большего количества смайлов
             temperature=0.7
         )
 
@@ -565,10 +614,10 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.error(f"Ошибка при генерации: {e}")
         await message_obj.reply_text("Ошибка при генерации поздравления. Попробуйте ещё раз.")
 
-    # Кнопки "Ещё" и "Назад"
+    # Кнопки "Ещё" и "Начать сначала" (убрана кнопка "Назад")
     keyboard = [
         [InlineKeyboardButton("Ещё варианты", callback_data="generate_again")],
-        [InlineKeyboardButton("Назад", callback_data="back_to_category")]
+        [InlineKeyboardButton("Начать сначала", callback_data="back_to_main_category")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await message_obj.reply_text("Дополнительные действия:", reply_markup=reply_markup)
@@ -612,7 +661,7 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     logger.info(f"Feedback from {user.id} (@{user.username}): {feedback_text}")
 
     # Отправляем админу (замените YOUR_ADMIN_ID на свой реальный ID)
-    admin_id = os.getenv("ADMIN_TELEGRAM_ID") # Установите эту переменную окружения
+    admin_id = os.getenv("242793896") # Установите эту переменную окружения
     if admin_id:
         try:
             await context.bot.send_message(chat_id=int(admin_id), text=f"Обратная связь от @{user.username} (ID: {user.id}):\n\n{feedback_text}")
@@ -642,7 +691,7 @@ def main():
             ],
             GENERATE: [
                 CallbackQueryHandler(generate_again, pattern="^generate_again$"),
-                CallbackQueryHandler(back_to_category, pattern="^back_to_category$"),
+                CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"), # Изменили на back_to_main_category
             ],
             FEEDBACK: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_feedback),
