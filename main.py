@@ -47,8 +47,8 @@ import warnings
 from telegram.warnings import PTBUserWarning
 warnings.filterwarnings(action="ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
-# Определяем шаги разговора
-CATEGORY, SUBCATEGORY, EMOJIS, NAME, GENERATE, FEEDBACK = range(6)
+# Определяем шаги разговора (ДОБАВЛЕНО STYLE)
+CATEGORY, SUBCATEGORY, STYLE, EMOJIS, NAME, GENERATE, FEEDBACK = range(7)
 
 # --- НАЧАЛО: Организация категорий ---
 MAIN_CATEGORIES = {
@@ -149,6 +149,26 @@ SUBCATEGORIES = {
     },
 }
 
+# НОВОЕ: Стили поздравлений
+STYLES = {
+    "standard": "📝 Стандартное / универсальное",
+    "short": "✂️ Короткое / лаконичное",
+    "funny": "😄 Смешное / с юмором",
+    "warm": "❤️ Душевное / тёплое",
+    "formal": "💼 Официальное / деловое",
+    "romantic": "💕 Романтическое",
+}
+
+# НОВОЕ: Описание стилей для промптов
+STYLE_DESCRIPTIONS = {
+    "standard": "нейтральное, вежливое, универсальное поздравление",
+    "short": "очень короткое, лаконичное, 1-2 предложения, без лишних слов",
+    "funny": "с юмором, лёгкая ирония, забавное, но не оскорбительное",
+    "warm": "душевное, тёплое, от сердца, с акцентом на чувства и эмоции",
+    "formal": "официальное, деловое, строгое, уважительный тон без шуток",
+    "romantic": "романтическое, нежное, мягкое, с акцентом на чувства",
+}
+
 CATEGORY_INTERNAL = {
     "toast_corporate": "тост на корпоративе",
     "toast_wedding": "тост на свадьбе",
@@ -225,99 +245,82 @@ CATEGORY_INTERNAL = {
 }
 
 EMOJI_MAP = {
-  "toast_corporate": "🥂🍻👨‍💼👩‍💼🎉💼📈🏆🎊",
-  "toast_wedding": "🥂💍👰🤵💐💒❤️🎶🎊",
-  "toast_new_year": "🥂🍾🎆🎇🎉🎄❄️🎊✨",
-  "toast_birthday": "🥂🎂🎈🎁🎊🎉🎀🕯️🎇",
-  "toast_farewell": "🥂👋✈️🎉🚀💌🧳🌍💫",
-  "toast_cocktail": "🥂🍸🍹🍾🍇🎶🕺💃🎉",
-  "toast_romantic": "🥂💕🌹💞💌💋💖✨🌙",
-  "toast_funny": "🥂😂🎉🤣🎈🎭😜🎊🍻",
-  
-  "birthday": "🎉🎂🎈🎁🎊🥳🎀🎇🍰",
-  "new_year": "🎄❄️⛄🎁✨🎆🎇🍾🥂",
-  "wedding": "💍👰🤵💐💒❤️🎶🎉🎊",
-  "wedding_anniversary": "💍💕🥂🎉🎊❤️💞💐✨",
-  "graduation": "🎓📚🎉🎊🥳🏅🎖️📜✨",
-  
-  "car_purchase": "🚗💨🏁🎉🎊🔑🛣️✨🏎️",
-  "apartment_purchase": "🏠🔑🎊🎉🛋️🪑🎀📦🍾",
-  "house_purchase": "🏠🏡🎊🎉🔑🌳☀️🍾🏆",
-  
-  "victory": "🏆🎯🎉🥳🎊💪🔥🎖️🚀",
-  "award": "🏆🏅🎉🎊🎖️🥇🌟👏✨",
-  "sports_success": "🏆⚽🏀🎾🎉🥇💪🔥🎖️",
-  
-  "recovery": "🩹💊✅🌞🌈🌿🌸💪😊",
-  "discharge": "🏥✅🩺🎉💪🌈🌞🥳🎊",
-  
-  "relations_anniversary": "💕🌹🥂💞💌💋❤️🎉✨",
-  "friendship_anniversary": "🤝💕🎉🥳🎊🍻🌟😄💫",
-  
-  "move": "🏠🚚📦🎉🎊🔑🌇🍕🍾",
-  "new_job": "💼👔🎉🎊🏢📈👏🚀🥂",
-  "promotion": "💼📈🎉🏆🎊🥳🚀👏✨",
-  "retirement": "🎉🏖️👴👵🌅🍹🌴🎊🍾😌",
-  
-  "project_success": "🚀🎯🎉🏆🎊💻📈🥳👏",
-  "report_submitted": "📋✅🎉🎊🧠👏🍀🏆🚀",
-  
-  "vacation_start": "✈️🏖️☀️🌊🍹🎉🕶️🌴😎",
-  "vacation_end": "🏠💼📅☕🧳🎊🛬😊🌇",
-  
-  "valentines_day": "💕🌹🍫💝💌❤️💋🥂✨",
-  "name_day": "🎂🎉🎈🎊🎁🥳🎀✨🍰",
-  
-  "new_home": "🏠🎉🎊🔑🛋️🍾🌳🏡🎀",
-  "mothers_day": "👩💐💕🌷🎉💝☀️🌸🌹",
-  "fathers_day": "👨💼🎉🎊🥇🍻💪🏆❤️",
-  "family_day": "👨‍👩‍👧‍👦💕🎉🏡🌈🥰🌸🎊💞",
-  
-  "defender_day": "🎖️👨‍✈️🎉💪🛡️🇷🇺🚁🏆🔥",
-  "womens_day": "🌷👩🎉💐💝❤️🥂✨🎊",
-  "teachers_day": "📚👩‍🏫🍎🎉🎊✏️📖💐✨",
-  "doctors_day": "🏥👨‍⚕️💊🩺🎉🎊👏🌿💉",
-  "programmers_day": "💻⌨️👨‍💻🎉🧠☕🚀📈🎊",
-  "police_day": "🚔👮‍♂️🎖️🎉💪🇷🇺🔥🏆👮‍♀️",
-  "prosecutor_day": "⚖️👨‍💼🎉📜🏛️🎊🏆📚👏",
-  "lawyers_day": "⚖️👨‍💼🎉💼📜🏛️🎊📚🏆",
-  "company_day": "🏢🎉💼🎊🥳📈🚀🏆🤝",
-  
-  "birth_child": "👶🍼💕🎉🎊💐🌸💖🥰",
-  "engagement": "💍💕👰🤵🎉🎊💝🌹🥂",
-  "proposal": "💍💕🌹💌❤️🎉✨🥂💞",
-  
-  "xmas": "🎄🎁🎅❄️🎉🎊☃️🌟🕯️",
-  "easter": "🐰🥚🌸✝️🎉🌼🌷☀️🎊",
-  "victory_day": "🎉🎖️🇷🇺🔥🏆🥇🎊💪🚩",
-  "city_day": "🏙️🎊🎉🎇🎆🍻🌇🚀✨",
-  "independence_day": "🎉🎆🇺🇸🏆🔥🎊🥳🚀✨",
-  
-  "spring_start": "🌸🌼☀️🌷🦋🌿🎉🌈🎊",
-  "summer_start": "☀️🏖️🏊‍♂️🍉🌴🍦🎉🌞🎊",
-  "autumn_start": "🍁🍃☕🎃🌰📚🎉🕯️✨",
-  "winter_start": "❄️⛄🎿🎄🔥☕🎉🌟🎊",
-  
-  "sep_1": "📚🎒🎓🍎✏️🎉🎊🏫✨",
-  "diploma": "🎓📜🎉🏆🎊🎖️👏🥳✨",
-  "default": "🎉✨🎊🥳🚀💫🍀👏🏆"
+    "toast_corporate": "🥂🍻👨‍💼👩‍💼🎉",
+    "toast_wedding": "🥂💍👰🤵💐",
+    "toast_new_year": "🥂🍾🎆🎉",
+    "toast_birthday": "🥂🎂🎈🎁",
+    "toast_farewell": "🥂👋✈️🎉",
+    "toast_cocktail": "🥂🍸🍹",
+    "toast_romantic": "🥂💕🌹",
+    "toast_funny": "🥂😂🎉",
+    "birthday": "🎉🎂🎈🎁🎊",
+    "new_year": "🎄❄️⛄🎁✨",
+    "wedding": "💍👰🤵💐💒",
+    "wedding_anniversary": "💍💕🥂🎉",
+    "graduation": "🎓🎓📚🎉",
+    "car_purchase": "🚗💨🏁",
+    "apartment_purchase": "🏠🔑🎊",
+    "house_purchase": "🏠🏡🎊",
+    "victory": "🏆🎯🎉",
+    "award": "🏆🏅🎉",
+    "sports_success": "🏆⚽🏀🎾",
+    "recovery": "🩹💊✅",
+    "discharge": "🏥✅🩺",
+    "relations_anniversary": "💕🌹🥂",
+    "friendship_anniversary": "🤝💕🎉",
+    "move": "🏠🚚📦",
+    "new_job": "💼👔🎉",
+    "promotion": "💼📈🎉",
+    "retirement": "🎉🏖️👴👵",
+    "project_success": "🚀🎯🎉",
+    "report_submitted": "📋✅🎉",
+    "vacation_start": "✈️🏖️☀️",
+    "vacation_end": "🏠💼📅",
+    "valentines_day": "💕🌹🍫💝",
+    "name_day": "🎂🎉🎈",
+    "new_home": "🏠🎉🎊",
+    "mothers_day": "👩💐💕",
+    "fathers_day": "👨💼🎉",
+    "family_day": "👨‍👩‍👧‍👦💕🎉",
+    "defender_day": "🎖️👨‍✈️🎉",
+    "womens_day": "🌷👩🎉",
+    "teachers_day": "📚👩‍🏫🍎",
+    "doctors_day": "🏥👨‍⚕️💊",
+    "programmers_day": "💻⌨️👨‍💻",
+    "police_day": "🚔👮‍♂️🎖️",
+    "prosecutor_day": "⚖️👨‍💼🎉",
+    "lawyers_day": "⚖️👨‍💼🎉",
+    "company_day": "🏢🎉💼",
+    "birth_child": "👶🍼💕",
+    "engagement": "💍💕👰🤵",
+    "proposal": "💍💕🌹",
+    "xmas": "🎄🎁🎅❄️",
+    "easter": "🐰🥚🌸✝️",
+    "victory_day": "🎉🎖️🇷🇺",
+    "city_day": "🏙️🎊🎉",
+    "independence_day": "🎉🎆🇺🇸",
+    "spring_start": "🌸🌼☀️",
+    "summer_start": "☀️🏖️🏊‍♂️",
+    "autumn_start": "🍁🍃☕",
+    "winter_start": "❄️⛄🎿",
+    "sep_1": "📚🎒🎓",
+    "diploma": "🎓📜🎉",
+    "default": "🎉✨🎊"
 }
-# --- НАЧАЛО: Лимит запросов (ИСПРАВЛЕНО) ---
+
+# --- НАЧАЛО: Лимит запросов ---
 REQUEST_LIMIT_PER_MINUTE = 3
 
 def is_rate_limited(user_id):
     now = datetime.now()
     user_requests = request_times.get(user_id, [])
     
-    # Удаляем старые запросы (старше 1 минуты)
     user_requests = [req_time for req_time in user_requests if now - req_time < timedelta(minutes=1)]
     
     if len(user_requests) >= REQUEST_LIMIT_PER_MINUTE:
-        # Время до разблокировки = время первого запроса + 1 минута - текущее время
         time_to_reset = user_requests[0] + timedelta(minutes=1) - now
         return True, time_to_reset
     
-    # Добавляем новый запрос
     user_requests.append(now)
     request_times[user_id] = user_requests
     return False, None
@@ -352,7 +355,8 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             [InlineKeyboardButton("⭐ 100 Stars", callback_data="donate_100")],
             [InlineKeyboardButton("⭐ 200 Stars", callback_data="donate_200")],
             [InlineKeyboardButton("⭐ 500 Stars", callback_data="donate_500")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main_category")]
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main_category")],
+            [InlineKeyboardButton("🏠 Начать сначала", callback_data="restart_bot")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
@@ -375,17 +379,14 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     subcats = SUBCATEGORIES.get(category_key, {})
     if not subcats:
         context.user_data['subcategory_key'] = category_key
+        # Переходим к выбору стиля
         keyboard = [
-            [InlineKeyboardButton("✅ Да", callback_data="emojis_yes")],
-            [InlineKeyboardButton("❌ Нет", callback_data="emojis_no")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main_category")]
+            [InlineKeyboardButton(text, callback_data=key)] for key, text in STYLES.items()
         ]
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_main_category")])
         reply_markup = InlineKeyboardMarkup(keyboard)
-        if category_key == "toast":
-            await query.edit_message_text("Добавить смайлики в тост?", reply_markup=reply_markup)
-        else:
-            await query.edit_message_text("Добавить смайлики?", reply_markup=reply_markup)
-        return EMOJIS
+        await query.edit_message_text("Выберите стиль поздравления:", reply_markup=reply_markup)
+        return STYLE
 
     keyboard = [
         [InlineKeyboardButton(text, callback_data=key)] for key, text in subcats.items()
@@ -401,10 +402,28 @@ async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE)
     subcategory_key = query.data
     context.user_data['subcategory_key'] = subcategory_key
 
+    # Переходим к выбору стиля
+    keyboard = [
+        [InlineKeyboardButton(text, callback_data=key)] for key, text in STYLES.items()
+    ]
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_category")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("Выберите стиль поздравления:", reply_markup=reply_markup)
+    
+    return STYLE
+
+# НОВАЯ ФУНКЦИЯ: Выбор стиля
+async def choose_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    style_key = query.data
+    context.user_data['style'] = style_key
+
+    # После выбора стиля переходим к смайликам
     keyboard = [
         [InlineKeyboardButton("✅ Да", callback_data="emojis_yes")],
         [InlineKeyboardButton("❌ Нет", callback_data="emojis_no")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_category")]
+        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_style")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -469,6 +488,20 @@ async def back_to_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     else:
         return await back_to_main_category(update, context)
 
+# НОВАЯ ФУНКЦИЯ: Назад к выбору стиля
+async def back_to_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton(text, callback_data=key)] for key, text in STYLES.items()
+    ]
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_category")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("Выберите стиль поздравления:", reply_markup=reply_markup)
+    
+    return STYLE
+
 async def back_to_emojis(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
@@ -476,7 +509,7 @@ async def back_to_emojis(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     keyboard = [
         [InlineKeyboardButton("✅ Да", callback_data="emojis_yes")],
         [InlineKeyboardButton("❌ Нет", callback_data="emojis_no")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_category")]
+        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_style")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -518,7 +551,6 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         user_id = update.effective_user.id
         message_obj = update.message
 
-    # Проверка лимита (ИСПРАВЛЕНО)
     is_limited, reset_time = is_rate_limited(user_id)
     if is_limited:
         if reset_time:
@@ -537,8 +569,10 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     subcategory_key = context.user_data.get('subcategory_key')
     name = context.user_data.get('name', "друга")
     emojis = context.user_data.get('emojis', False)
+    style = context.user_data.get('style', 'standard')  # По умолчанию стандартный стиль
 
     category_internal = CATEGORY_INTERNAL.get(subcategory_key, "праздник")
+    style_description = STYLE_DESCRIPTIONS.get(style, "стандартное")
 
     emoji_string = EMOJI_MAP.get(subcategory_key, EMOJI_MAP.get(category_internal.split()[0], EMOJI_MAP["default"])) if emojis else ""
     emoji_instruction = f"Разрешено использовать следующие смайлики: {emoji_string}. Распредели их равномерно по всем трём вариантам, от 20 до 35 штук в каждом. Смайлики должны быть в разных местах текста: в начале, в середине, в конце. Чередуй их разнообразно, чтобы текст был живым и не однообразным." if emojis else "Не использовать смайлы."
@@ -548,38 +582,40 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if subcategory_key.startswith('toast_'):
         prompt = f"""
 Создай 3 разных популярных {category_internal}, которые существуют и часто используются.
+Стиль: {style_description}.
 {emoji_instruction}
 Адресат: {name_part}.
 Язык: русский.
 Требования:
 - Это должны быть **реальные**, **существующие** тосты, **не придуманные**.
+- Соблюдай выбранный стиль: {style_description}.
 - Без повторов фраз между вариантами.
 - Без клише "желаю счастья, здоровья".
 - Сохрани естественный ритм речи.
 - Избегай длинных тире (—), используй короткие (-) или просто пробел.
 - Пиши от первого лица ("Поздравляю", "От всей души", "С теплом в сердце").
 - Не использовать "ChatGPT", "OpenAI" или подобные обращения.
-- Варианты должны быть короткими и по делу.
 - Всегда возвращай 3 варианта в виде пронумерованного списка.
 """
-        system_prompt = "Ты — профессиональный автор тостов. Пиши на русском языке. Возвращай 3 популярных, существующих тоста в виде пронумерованного списка. Используй короткие тире (-). Если разрешены смайлики, распредели их равномерно по всем трём вариантам, от 20 до 35 штук в каждом, размещая их в разных частях текста для разнообразия."
+        system_prompt = f"Ты — профессиональный автор тостов. Пиши на русском языке в стиле: {style_description}. Возвращай 3 популярных, существующих тоста в виде пронумерованного списка. Используй короткие тире (-). Если разрешены смайлики, распредели их равномерно по всем трём вариантам, от 20 до 35 штук в каждом, размещая их в разных частях текста для разнообразия."
     else:
         prompt = f"""
 Создай 3 разных {category_internal} в прозе или стихе.
+Стиль: {style_description}.
 {emoji_instruction}
 Адресат: {name_part}.
 Язык: русский.
 Требования:
+- Соблюдай выбранный стиль: {style_description}.
 - Без повторов фраз между вариантами.
 - Без клише "желаю счастья, здоровья".
 - Сохрани естественный ритм речи.
 - Избегай длинных тире (—), используй короткие (-) или просто пробел.
 - Пиши от первого лица ("Поздравляю", "От всей души", "С теплом в сердце").
 - Не использовать "ChatGPT", "OpenAI" или подобные обращения.
-- Варианты должны быть короткими и по делу.
 - Всегда возвращай 3 варианта в виде пронумерованного списка.
 """
-        system_prompt = "Ты — профессиональный автор поздравлений и тостов. Пиши на русском языке. Не используй восклицательные знаки подряд (макс. 1), избегай шаблонов 'желаю счастья, здоровья'. Всегда возвращай 3 варианта в виде пронумерованного списка. Используй короткие тире (-). Если разрешены смайлики, распредели их равномерно по всем трём вариантам, от 20 до 35 штук в каждом, размещая их в разных частях текста для разнообразия."
+        system_prompt = f"Ты — профессиональный автор поздравлений и тостов. Пиши на русском языке в стиле: {style_description}. Не используй восклицательные знаки подряд (макс. 1), избегай шаблонов 'желаю счастья, здоровья'. Всегда возвращай 3 варианта в виде пронумерованного списка. Используй короткие тире (-). Если разрешены смайлики, распредели их равномерно по всем трём вариантам, от 20 до 35 штук в каждом, размещая их в разных частях текста для разнообразия."
 
     try:
         client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
@@ -644,30 +680,42 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     feedback_text = update.message.text
     user = update.effective_user
-    logger.info(f"Feedback from {user.id} (@{user.username}): {feedback_text}")
+    
+    # Логируем получение обратной связи
+    logger.info(f"📩 Получена обратная связь от {user.id} (@{user.username}): {feedback_text}")
 
     admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+    
     if admin_id:
         try:
+            # Отправляем сообщение админу
             await context.bot.send_message(
                 chat_id=int(admin_id), 
-                text=f"📩 Обратная связь от @{user.username} (ID: {user.id}):\n\n{feedback_text}"
+                text=f"📩 **Обратная связь**\n\n"
+                     f"От: @{user.username if user.username else 'без username'}\n"
+                     f"ID: `{user.id}`\n"
+                     f"Имя: {user.first_name} {user.last_name if user.last_name else ''}\n\n"
+                     f"Сообщение:\n{feedback_text}",
+                parse_mode="Markdown"
             )
             await update.message.reply_text("Спасибо за ваше сообщение! Мы его получили. ✅")
-            logger.info(f"Feedback sent to admin {admin_id}")
+            logger.info(f"✅ Обратная связь успешно отправлена админу {admin_id}")
+        except ValueError as ve:
+            logger.error(f"❌ ADMIN_TELEGRAM_ID имеет некорректное значение: {admin_id}. Ошибка: {ve}")
+            await update.message.reply_text("Спасибо за ваше сообщение! ✅")
         except Exception as e:
-            logger.error(f"Ошибка при отправке обратной связи админу: {e}")
+            logger.error(f"❌ Ошибка при отправке обратной связи админу: {e}")
             await update.message.reply_text("Спасибо за ваше сообщение! ✅")
     else:
-        logger.warning(f"ADMIN_TELEGRAM_ID not set. Feedback: {feedback_text}")
+        logger.warning(f"⚠️ ADMIN_TELEGRAM_ID не установлен. Обратная связь не отправлена: {feedback_text}")
         await update.message.reply_text("Спасибо за ваше сообщение! Мы его получили. ✅")
 
-    # ИСПРАВЛЕНО: Показываем кнопку "Назад" и возвращаемся к CATEGORY
+    # Показываем кнопку возврата
     keyboard = [[InlineKeyboardButton("🏠 Вернуться в меню", callback_data="back_to_main_category")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Хотите вернуться в меню?", reply_markup=reply_markup)
     
-    return CATEGORY  # ИСПРАВЛЕНО: было ConversationHandler.END
+    return CATEGORY
 
 # --- НАЧАЛО: Донаты через Telegram Stars ---
 async def handle_donate_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -684,14 +732,13 @@ async def handle_donate_amount(update: Update, context: ContextTypes.DEFAULT_TYP
     stars_amount = amount_map.get(query.data, 50)
     
     try:
-        # Отправляем инвойс для оплаты через Telegram Stars
         await context.bot.send_invoice(
             chat_id=query.from_user.id,
             title=f"Поддержка проекта",
             description=f"Спасибо за вашу поддержку! Вы помогаете развитию бота.",
             payload=f"donate_{stars_amount}_stars",
-            provider_token="",  # Для Telegram Stars не нужен
-            currency="XTR",  # Telegram Stars
+            provider_token="",
+            currency="XTR",
             prices=[LabeledPrice("Поддержка проекта", stars_amount)],
         )
         await query.edit_message_text(
@@ -706,18 +753,15 @@ async def handle_donate_amount(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка pre-checkout запроса"""
     query = update.pre_checkout_query
     await query.answer(ok=True)
 
 async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка успешного платежа"""
     user = update.effective_user
     payment = update.message.successful_payment
     
     logger.info(f"💰 Donation received from {user.id} (@{user.username}): {payment.total_amount} Stars")
     
-    # Уведомляем админа о донате
     admin_id = os.getenv("ADMIN_TELEGRAM_ID")
     if admin_id:
         try:
@@ -731,7 +775,6 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
         except Exception as e:
             logger.error(f"Ошибка при уведомлении админа о донате: {e}")
     
-    # Благодарим пользователя
     await update.message.reply_text(
         "🎉 Огромное спасибо за вашу поддержку!\n\n"
         "Ваш вклад очень важен для развития проекта. ❤️\n\n"
@@ -739,15 +782,11 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     )
 # --- КОНЕЦ: Донаты через Telegram Stars ---
 
-# --- НАЧАЛО: Обработчик ошибок ---
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработка ошибок"""
     logger.error(f"Exception while handling an update: {context.error}")
     
-    # Если это Conflict - значит запущено 2 экземпляра бота
     if isinstance(context.error, Conflict):
         logger.critical("⚠️ CONFLICT ERROR: Запущено несколько экземпляров бота! Остановите старые экземпляры.")
-# --- КОНЕЦ: Обработчик ошибок ---
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -757,6 +796,7 @@ def main():
         states={
             CATEGORY: [
                 CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
+                CallbackQueryHandler(restart_bot, pattern="^restart_bot$"),
                 CallbackQueryHandler(handle_donate_amount, pattern="^donate_(50|100|200|500)$"),
                 CallbackQueryHandler(choose_category),
             ],
@@ -764,7 +804,13 @@ def main():
                 CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
                 CallbackQueryHandler(choose_subcategory),
             ],
+            STYLE: [
+                CallbackQueryHandler(back_to_category, pattern="^back_to_category$"),
+                CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
+                CallbackQueryHandler(choose_style),
+            ],
             EMOJIS: [
+                CallbackQueryHandler(back_to_style, pattern="^back_to_style$"),
                 CallbackQueryHandler(back_to_category, pattern="^back_to_category$"),
                 CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
                 CallbackQueryHandler(choose_emojis),
@@ -772,6 +818,7 @@ def main():
             NAME: [
                 CallbackQueryHandler(skip_name, pattern="^skip_name$"),
                 CallbackQueryHandler(back_to_emojis, pattern="^back_to_emojis$"),
+                CallbackQueryHandler(back_to_style, pattern="^back_to_style$"),
                 CallbackQueryHandler(back_to_category, pattern="^back_to_category$"),
                 CallbackQueryHandler(back_to_main_category, pattern="^back_to_main_category$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name),
@@ -790,17 +837,17 @@ def main():
     )
 
     application.add_handler(conv_handler)
-    
-    # Обработчики для платежей
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
-    
-    # Обработчик ошибок
     application.add_error_handler(error_handler)
 
     logger.info("🚀 Бот запущен и готов к работе!")
     logger.info(f"💰 Донаты через Telegram Stars: ВКЛЮЧЕНЫ")
-    logger.info(f"📧 Admin ID: {os.getenv('ADMIN_TELEGRAM_ID', 'НЕ УСТАНОВЛЕН')}")
+    admin_id_status = os.getenv('ADMIN_TELEGRAM_ID', 'НЕ УСТАНОВЛЕН')
+    logger.info(f"📧 Admin ID: {admin_id_status}")
+    
+    if admin_id_status == 'НЕ УСТАНОВЛЕН':
+        logger.warning("⚠️ ВНИМАНИЕ: ADMIN_TELEGRAM_ID не установлен! Обратная связь не будет отправляться.")
     
     application.run_polling()
 
