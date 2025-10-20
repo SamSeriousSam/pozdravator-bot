@@ -2,6 +2,9 @@
 import os
 import logging
 import asyncio
+import json
+import tempfile
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import (
     Application,
@@ -15,8 +18,149 @@ from telegram.ext import (
 )
 from telegram.error import Conflict
 import openai
-from datetime import datetime, timedelta
-import random
+
+# --- НАЧАЛО: Google Sheets ---
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+# Инициализация Google Sheets клиента
+def init_google_sheets():
+    """Инициализация подключения к Google Sheets"""
+    try:
+        # Получаем credentials из переменной окружения
+        creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        
+        if not creds_json or not sheet_id:
+            logger.warning("⚠️ Google Sheets не настроены. Аналитика отключена.")
+            return None, None
+        
+        # Создаём временный файл с credentials
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
+            temp_file.write(creds_json)
+            temp_file_path = temp_file.name
+        
+        # Настройка авторизации
+        scope = [
+            'https://spreadsheets.google.com/feeds',
+            'https://www.googleapis.com/auth/drive'
+        ]
+        
+        creds = ServiceAccountCredentials.from_json_keyfile_name(temp_file_path, scope)
+        client = gspread.authorize(creds)
+        
+        # Удаляем временный файл
+        os.unlink(temp_file_path)
+        
+        # Открываем таблицу
+        sheet = client.open_by_key(sheet_id)
+        
+        logger.info("✅ Google Sheets успешно подключены!")
+        return sheet, sheet_id
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка подключения к Google Sheets: {e}")
+        return None, None
+
+# Глобальные переменные для Google Sheets
+GOOGLE_SHEET = None
+GOOGLE_SHEET_ID = None
+
+# Функции для записи в Google Sheets
+def log_to_sheets(worksheet_name, data):
+    """Записать данные в указанный лист Google Sheets"""
+    try:
+        if not GOOGLE_SHEET:
+            return
+        
+        worksheet = GOOGLE_SHEET.worksheet(worksheet_name)
+        worksheet.append_row(data)
+        logger.info(f"📊 Записано в {worksheet_name}: {data}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка записи в Google Sheets ({worksheet_name}): {e}")
+
+def log_user(user):
+    """Записать/обновить информацию о пользователе"""
+    try:
+        if not GOOGLE_SHEET:
+            return
+        
+        worksheet = GOOGLE_SHEET.worksheet("Пользователи")
+        
+        # Ищем пользователя
+        try:
+            cell = worksheet.find(str(user.id))
+            row_num = cell.row
+            
+            # Обновляем последний визит и счётчик генераций
+            current_count = int(worksheet.cell(row_num, 6).value or 0)
+            worksheet.update_cell(row_num, 5, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  # Последний визит
+            worksheet.update_cell(row_num, 6, current_count + 1)  # Увеличиваем счётчик
+            
+        except gspread.CellNotFound:
+            # Добавляем нового пользователя
+            data = [
+                user.id,
+                user.username or "без username",
+                f"{user.first_name or ''} {user.last_name or ''}".strip(),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Первый визит
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Последний визит
+                1  # Всего генераций
+            ]
+            worksheet.append_row(data)
+            logger.info(f"👤 Новый пользователь: {user.id} (@{user.username})")
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка логирования пользователя: {e}")
+
+def log_generation(user, category, subcategory, style, emojis, name_provided, success):
+    """Записать генерацию поздравления"""
+    data = [
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        user.id,
+        user.username or "без username",
+        category,
+        subcategory,
+        style,
+        "Да" if emojis else "Нет",
+        "Да" if name_provided else "Нет",
+        "Успех" if success else "Ошибка"
+    ]
+    log_to_sheets("Генерации", data)
+
+def log_donation(user, amount, payload):
+    """Записать донат"""
+    data = [
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        user.id,
+        user.username or "без username",
+        amount,
+        payload
+    ]
+    log_to_sheets("Донаты", data)
+
+def log_feedback(user, message):
+    """Записать обратную связь"""
+    data = [
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        user.id,
+        user.username or "без username",
+        message
+    ]
+    log_to_sheets("Обратная связь", data)
+
+def log_rate_limit(user, seconds_left):
+    """Записать превышение лимита"""
+    data = [
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        user.id,
+        user.username or "без username",
+        seconds_left
+    ]
+    log_to_sheets("Лимиты", data)
+
+# --- КОНЕЦ: Google Sheets ---
 
 # --- НАЧАЛО: Лимит запросов ---
 request_times = {}
@@ -47,7 +191,7 @@ import warnings
 from telegram.warnings import PTBUserWarning
 warnings.filterwarnings(action="ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
-# Определяем шаги разговора (ДОБАВЛЕНО STYLE)
+# Определяем шаги разговора
 CATEGORY, SUBCATEGORY, STYLE, EMOJIS, NAME, GENERATE, FEEDBACK = range(7)
 
 # --- НАЧАЛО: Организация категорий ---
@@ -149,7 +293,6 @@ SUBCATEGORIES = {
     },
 }
 
-# НОВОЕ: Стили поздравлений
 STYLES = {
     "standard": "📝 Стандартное / универсальное",
     "short": "✂️ Короткое / лаконичное",
@@ -159,7 +302,6 @@ STYLES = {
     "romantic": "💕 Романтическое",
 }
 
-# НОВОЕ: Описание стилей для промптов
 STYLE_DESCRIPTIONS = {
     "standard": "нейтральное, вежливое, универсальное поздравление",
     "short": "очень короткое, лаконичное, 1-2 предложения, без лишних слов",
@@ -327,6 +469,11 @@ def is_rate_limited(user_id):
 # --- КОНЕЦ: Лимит запросов ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user = update.effective_user
+    
+    # АНАЛИТИКА: Логируем нового пользователя или /start
+    log_user(user)
+    
     welcome_text = (
         "Привет! 👋\n\n"
         "Я помогу вам быстро и красиво поздравить кого угодно.\n"
@@ -379,7 +526,6 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     subcats = SUBCATEGORIES.get(category_key, {})
     if not subcats:
         context.user_data['subcategory_key'] = category_key
-        # Переходим к выбору стиля
         keyboard = [
             [InlineKeyboardButton(text, callback_data=key)] for key, text in STYLES.items()
         ]
@@ -402,7 +548,6 @@ async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE)
     subcategory_key = query.data
     context.user_data['subcategory_key'] = subcategory_key
 
-    # Переходим к выбору стиля
     keyboard = [
         [InlineKeyboardButton(text, callback_data=key)] for key, text in STYLES.items()
     ]
@@ -412,14 +557,12 @@ async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     return STYLE
 
-# НОВАЯ ФУНКЦИЯ: Выбор стиля
 async def choose_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
     style_key = query.data
     context.user_data['style'] = style_key
 
-    # После выбора стиля переходим к смайликам
     keyboard = [
         [InlineKeyboardButton("✅ Да", callback_data="emojis_yes")],
         [InlineKeyboardButton("❌ Нет", callback_data="emojis_no")],
@@ -488,7 +631,6 @@ async def back_to_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     else:
         return await back_to_main_category(update, context)
 
-# НОВАЯ ФУНКЦИЯ: Назад к выбору стиля
 async def back_to_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
@@ -546,9 +688,11 @@ async def generate_message_callback(update: Update, context: ContextTypes.DEFAUL
 async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if hasattr(update, 'from_user') and hasattr(update, 'message'):
         user_id = update.from_user.id
+        user = update.from_user
         message_obj = update.message
     else:
         user_id = update.effective_user.id
+        user = update.effective_user
         message_obj = update.message
 
     is_limited, reset_time = is_rate_limited(user_id)
@@ -557,6 +701,9 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             seconds_left = int(reset_time.total_seconds())
             minutes_left = seconds_left // 60
             seconds_remainder = seconds_left % 60
+            
+            # АНАЛИТИКА: Логируем превышение лимита
+            log_rate_limit(user, seconds_left)
             
             if minutes_left > 0:
                 await message_obj.reply_text(f"⏳ Превышен лимит запросов.\nПопробуйте через {minutes_left} мин {seconds_remainder} сек.")
@@ -567,9 +714,9 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return GENERATE
 
     subcategory_key = context.user_data.get('subcategory_key')
-    name = context.user_data.get('name', "друга")
+    name = context.user_data.get('name')
     emojis = context.user_data.get('emojis', False)
-    style = context.user_data.get('style', 'standard')  # По умолчанию стандартный стиль
+    style = context.user_data.get('style', 'standard')
 
     category_internal = CATEGORY_INTERNAL.get(subcategory_key, "праздник")
     style_description = STYLE_DESCRIPTIONS.get(style, "стандартное")
@@ -617,6 +764,7 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 """
         system_prompt = f"Ты — профессиональный автор поздравлений и тостов. Пиши на русском языке в стиле: {style_description}. Не используй восклицательные знаки подряд (макс. 1), избегай шаблонов 'желаю счастья, здоровья'. Всегда возвращай 3 варианта в виде пронумерованного списка. Используй короткие тире (-). Если разрешены смайлики, распредели их равномерно по всем трём вариантам, от 20 до 35 штук в каждом, размещая их в разных частях текста для разнообразия."
 
+    generation_success = False
     try:
         client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
         response = await client.chat.completions.create(
@@ -638,10 +786,23 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     clean_part = clean_part[2:].strip()
                 if clean_part:
                     await message_obj.reply_text(clean_part)
+        
+        generation_success = True
 
     except Exception as e:
         logger.error(f"Ошибка при генерации: {e}")
         await message_obj.reply_text("❌ Ошибка при генерации поздравления. Попробуйте ещё раз.")
+    
+    # АНАЛИТИКА: Логируем генерацию
+    log_generation(
+        user=user,
+        category=context.user_data.get('main_category', 'unknown'),
+        subcategory=subcategory_key,
+        style=style,
+        emojis=emojis,
+        name_provided=bool(name),
+        success=generation_success
+    )
 
     keyboard = [
         [InlineKeyboardButton("🔄 Ещё варианты", callback_data="generate_again")],
@@ -681,14 +842,15 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     feedback_text = update.message.text
     user = update.effective_user
     
-    # Логируем получение обратной связи
+    # АНАЛИТИКА: Логируем обратную связь
+    log_feedback(user, feedback_text)
+    
     logger.info(f"📩 Получена обратная связь от {user.id} (@{user.username}): {feedback_text}")
 
     admin_id = os.getenv("ADMIN_TELEGRAM_ID")
     
     if admin_id:
         try:
-            # Отправляем сообщение админу
             await context.bot.send_message(
                 chat_id=int(admin_id), 
                 text=f"📩 **Обратная связь**\n\n"
@@ -710,7 +872,6 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         logger.warning(f"⚠️ ADMIN_TELEGRAM_ID не установлен. Обратная связь не отправлена: {feedback_text}")
         await update.message.reply_text("Спасибо за ваше сообщение! Мы его получили. ✅")
 
-    # Показываем кнопку возврата
     keyboard = [[InlineKeyboardButton("🏠 Вернуться в меню", callback_data="back_to_main_category")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Хотите вернуться в меню?", reply_markup=reply_markup)
@@ -760,6 +921,9 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     user = update.effective_user
     payment = update.message.successful_payment
     
+    # АНАЛИТИКА: Логируем донат
+    log_donation(user, payment.total_amount, payment.invoice_payload)
+    
     logger.info(f"💰 Donation received from {user.id} (@{user.username}): {payment.total_amount} Stars")
     
     admin_id = os.getenv("ADMIN_TELEGRAM_ID")
@@ -789,6 +953,11 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.critical("⚠️ CONFLICT ERROR: Запущено несколько экземпляров бота! Остановите старые экземпляры.")
 
 def main():
+    global GOOGLE_SHEET, GOOGLE_SHEET_ID
+    
+    # Инициализация Google Sheets
+    GOOGLE_SHEET, GOOGLE_SHEET_ID = init_google_sheets()
+    
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -843,6 +1012,7 @@ def main():
 
     logger.info("🚀 Бот запущен и готов к работе!")
     logger.info(f"💰 Донаты через Telegram Stars: ВКЛЮЧЕНЫ")
+    logger.info(f"📊 Google Sheets: {'ВКЛЮЧЕНЫ' if GOOGLE_SHEET else 'ОТКЛЮЧЕНЫ'}")
     admin_id_status = os.getenv('ADMIN_TELEGRAM_ID', 'НЕ УСТАНОВЛЕН')
     logger.info(f"📧 Admin ID: {admin_id_status}")
     
