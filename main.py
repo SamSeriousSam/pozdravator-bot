@@ -86,7 +86,7 @@ def log_user(user):
         if not GOOGLE_SHEET:
             return
         
-        worksheet = GOOGLE_SHEET.worksheet("Пользователи")
+        worksheet = GOOGLE_SHEET.worksheet("Users")
         
         # Ищем пользователя
         try:
@@ -127,7 +127,7 @@ def log_generation(user, category, subcategory, style, emojis, name_provided, su
         "Да" if name_provided else "Нет",
         "Успех" if success else "Ошибка"
     ]
-    log_to_sheets("Генерации", data)
+    log_to_sheets("Generations", data)
 
 def log_donation(user, amount, payload):
     """Записать донат"""
@@ -138,7 +138,7 @@ def log_donation(user, amount, payload):
         amount,
         payload
     ]
-    log_to_sheets("Донаты", data)
+    log_to_sheets("Donations", data)
 
 def log_feedback(user, message):
     """Записать обратную связь"""
@@ -148,7 +148,7 @@ def log_feedback(user, message):
         user.username or "без username",
         message
     ]
-    log_to_sheets("Обратная связь", data)
+    log_to_sheets("Feedback", data)
 
 def log_rate_limit(user, seconds_left):
     """Записать превышение лимита"""
@@ -158,7 +158,7 @@ def log_rate_limit(user, seconds_left):
         user.username or "без username",
         seconds_left
     ]
-    log_to_sheets("Лимиты", data)
+    log_to_sheets("RateLimits", data)
 
 # --- КОНЕЦ: Google Sheets ---
 
