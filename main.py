@@ -27,7 +27,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 def init_google_sheets():
     """Инициализация подключения к Google Sheets"""
     try:
-        # Получаем credentials из переменной окружения
         creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         
@@ -35,12 +34,10 @@ def init_google_sheets():
             logger.warning("⚠️ Google Sheets не настроены. Аналитика отключена.")
             return None, None
         
-        # Создаём временный файл с credentials
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
             temp_file.write(creds_json)
             temp_file_path = temp_file.name
         
-        # Настройка авторизации
         scope = [
             'https://spreadsheets.google.com/feeds',
             'https://www.googleapis.com/auth/drive'
@@ -49,10 +46,8 @@ def init_google_sheets():
         creds = ServiceAccountCredentials.from_json_keyfile_name(temp_file_path, scope)
         client = gspread.authorize(creds)
         
-        # Удаляем временный файл
         os.unlink(temp_file_path)
         
-        # Открываем таблицу
         sheet = client.open_by_key(sheet_id)
         
         logger.info("✅ Google Sheets успешно подключены!")
@@ -62,11 +57,9 @@ def init_google_sheets():
         logger.error(f"❌ Ошибка подключения к Google Sheets: {e}")
         return None, None
 
-# Глобальные переменные для Google Sheets
 GOOGLE_SHEET = None
 GOOGLE_SHEET_ID = None
 
-# Функции для записи в Google Sheets
 def log_to_sheets(worksheet_name, data):
     """Записать данные в указанный лист Google Sheets"""
     try:
@@ -88,25 +81,27 @@ def log_user(user):
         
         worksheet = GOOGLE_SHEET.worksheet("Users")
         
-        # Ищем пользователя
+        # Ищем пользователя - ИСПРАВЛЕНО
         try:
-            cell = worksheet.find(str(user.id))
+            # Ищем в столбце A (User ID)
+            cell = worksheet.find(str(user.id), in_column=1)
             row_num = cell.row
             
             # Обновляем последний визит и счётчик генераций
             current_count = int(worksheet.cell(row_num, 6).value or 0)
-            worksheet.update_cell(row_num, 5, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  # Последний визит
-            worksheet.update_cell(row_num, 6, current_count + 1)  # Увеличиваем счётчик
+            worksheet.update_cell(row_num, 5, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            worksheet.update_cell(row_num, 6, current_count + 1)
+            logger.info(f"👤 Обновлён пользователь: {user.id} (@{user.username})")
             
-        except gspread.CellNotFound:
+        except gspread.exceptions.CellNotFound:  # ИСПРАВЛЕНО: правильное исключение
             # Добавляем нового пользователя
             data = [
                 user.id,
                 user.username or "без username",
                 f"{user.first_name or ''} {user.last_name or ''}".strip(),
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Первый визит
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Последний визит
-                1  # Всего генераций
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                0  # Счётчик генераций (будет увеличен при первой генерации)
             ]
             worksheet.append_row(data)
             logger.info(f"👤 Новый пользователь: {user.id} (@{user.username})")
@@ -128,6 +123,19 @@ def log_generation(user, category, subcategory, style, emojis, name_provided, su
         "Успех" if success else "Ошибка"
     ]
     log_to_sheets("Generations", data)
+    
+    # Обновляем счётчик генераций пользователя
+    try:
+        if not GOOGLE_SHEET:
+            return
+        
+        worksheet = GOOGLE_SHEET.worksheet("Users")
+        cell = worksheet.find(str(user.id), in_column=1)
+        row_num = cell.row
+        current_count = int(worksheet.cell(row_num, 6).value or 0)
+        worksheet.update_cell(row_num, 6, current_count + 1)
+    except Exception as e:
+        logger.error(f"❌ Ошибка обновления счётчика генераций: {e}")
 
 def log_donation(user, amount, payload):
     """Записать донат"""
@@ -166,35 +174,28 @@ def log_rate_limit(user, seconds_left):
 request_times = {}
 # --- КОНЕЦ: Лимит запросов ---
 
-# Читаем токены из переменных окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Проверяем, что токены загружены
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN не найден в переменных окружения")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY не найден в переменных окружения")
 
-# Установка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Подавляем httpx логи
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# Подавляем PTBUserWarning
 import warnings
 from telegram.warnings import PTBUserWarning
 warnings.filterwarnings(action="ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
-# Определяем шаги разговора
 CATEGORY, SUBCATEGORY, STYLE, EMOJIS, NAME, GENERATE, FEEDBACK = range(7)
 
-# --- НАЧАЛО: Организация категорий ---
 MAIN_CATEGORIES = {
     "toast": "🥂 Тосты",
     "birthday": "🎂 Дни рождения",
@@ -450,7 +451,6 @@ EMOJI_MAP = {
     "default": "🎉✨🎊"
 }
 
-# --- НАЧАЛО: Лимит запросов ---
 REQUEST_LIMIT_PER_MINUTE = 3
 
 def is_rate_limited(user_id):
@@ -466,12 +466,10 @@ def is_rate_limited(user_id):
     user_requests.append(now)
     request_times[user_id] = user_requests
     return False, None
-# --- КОНЕЦ: Лимит запросов ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.effective_user
     
-    # АНАЛИТИКА: Логируем нового пользователя или /start
     log_user(user)
     
     welcome_text = (
@@ -702,7 +700,6 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             minutes_left = seconds_left // 60
             seconds_remainder = seconds_left % 60
             
-            # АНАЛИТИКА: Логируем превышение лимита
             log_rate_limit(user, seconds_left)
             
             if minutes_left > 0:
@@ -778,14 +775,24 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
 
         message_text = response.choices[0].message.content
+        
+        # ИСПРАВЛЕНО: Разбиваем по двойному переносу строки и отправляем с нумерацией
         parts = message_text.split("\n\n")
+        variant_number = 1
+        
         for part in parts:
             if part.strip():
                 clean_part = part.strip()
+                
+                # Убираем старую нумерацию из ответа GPT
                 if clean_part.startswith(("1.", "2.", "3.", "1)", "2)", "3)")):
                     clean_part = clean_part[2:].strip()
+                
+                # Добавляем свою красивую нумерацию
                 if clean_part:
-                    await message_obj.reply_text(clean_part)
+                    formatted_message = f"**Вариант {variant_number}:**\n\n{clean_part}"
+                    await message_obj.reply_text(formatted_message, parse_mode="Markdown")
+                    variant_number += 1
         
         generation_success = True
 
@@ -793,7 +800,6 @@ async def generate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.error(f"Ошибка при генерации: {e}")
         await message_obj.reply_text("❌ Ошибка при генерации поздравления. Попробуйте ещё раз.")
     
-    # АНАЛИТИКА: Логируем генерацию
     log_generation(
         user=user,
         category=context.user_data.get('main_category', 'unknown'),
@@ -842,7 +848,6 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     feedback_text = update.message.text
     user = update.effective_user
     
-    # АНАЛИТИКА: Логируем обратную связь
     log_feedback(user, feedback_text)
     
     logger.info(f"📩 Получена обратная связь от {user.id} (@{user.username}): {feedback_text}")
@@ -878,7 +883,6 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     return CATEGORY
 
-# --- НАЧАЛО: Донаты через Telegram Stars ---
 async def handle_donate_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -921,7 +925,6 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     user = update.effective_user
     payment = update.message.successful_payment
     
-    # АНАЛИТИКА: Логируем донат
     log_donation(user, payment.total_amount, payment.invoice_payload)
     
     logger.info(f"💰 Donation received from {user.id} (@{user.username}): {payment.total_amount} Stars")
@@ -944,7 +947,6 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
         "Ваш вклад очень важен для развития проекта. ❤️\n\n"
         "Если у вас есть идеи или пожелания — пишите в обратную связь!"
     )
-# --- КОНЕЦ: Донаты через Telegram Stars ---
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Exception while handling an update: {context.error}")
@@ -955,7 +957,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 def main():
     global GOOGLE_SHEET, GOOGLE_SHEET_ID
     
-    # Инициализация Google Sheets
     GOOGLE_SHEET, GOOGLE_SHEET_ID = init_google_sheets()
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
