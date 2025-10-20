@@ -23,7 +23,6 @@ import openai
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# Инициализация Google Sheets клиента
 def init_google_sheets():
     """Инициализация подключения к Google Sheets"""
     try:
@@ -81,19 +80,19 @@ def log_user(user):
         
         worksheet = GOOGLE_SHEET.worksheet("Users")
         
-        # Ищем пользователя - ИСПРАВЛЕНО
-        try:
-            # Ищем в столбце A (User ID)
-            cell = worksheet.find(str(user.id), in_column=1)
-            row_num = cell.row
+        # Получаем все user_id из столбца A (пропускаем заголовок)
+        user_ids = worksheet.col_values(1)[1:]  # Пропускаем первую строку (заголовок)
+        
+        # Ищем индекс пользователя (добавляем 2: 1 для индексации с 1, 1 для заголовка)
+        if str(user.id) in user_ids:
+            row_num = user_ids.index(str(user.id)) + 2
             
             # Обновляем последний визит и счётчик генераций
             current_count = int(worksheet.cell(row_num, 6).value or 0)
             worksheet.update_cell(row_num, 5, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             worksheet.update_cell(row_num, 6, current_count + 1)
             logger.info(f"👤 Обновлён пользователь: {user.id} (@{user.username})")
-            
-        except gspread.exceptions.CellNotFound:  # ИСПРАВЛЕНО: правильное исключение
+        else:
             # Добавляем нового пользователя
             data = [
                 user.id,
@@ -101,7 +100,7 @@ def log_user(user):
                 f"{user.first_name or ''} {user.last_name or ''}".strip(),
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                0  # Счётчик генераций (будет увеличен при первой генерации)
+                0  # Счётчик генераций
             ]
             worksheet.append_row(data)
             logger.info(f"👤 Новый пользователь: {user.id} (@{user.username})")
@@ -130,10 +129,19 @@ def log_generation(user, category, subcategory, style, emojis, name_provided, su
             return
         
         worksheet = GOOGLE_SHEET.worksheet("Users")
-        cell = worksheet.find(str(user.id), in_column=1)
-        row_num = cell.row
-        current_count = int(worksheet.cell(row_num, 6).value or 0)
-        worksheet.update_cell(row_num, 6, current_count + 1)
+        
+        # Получаем все user_id из столбца A (пропускаем заголовок)
+        user_ids = worksheet.col_values(1)[1:]
+        
+        # Ищем индекс пользователя
+        if str(user.id) in user_ids:
+            row_num = user_ids.index(str(user.id)) + 2
+            current_count = int(worksheet.cell(row_num, 6).value or 0)
+            worksheet.update_cell(row_num, 6, current_count + 1)
+            logger.info(f"✅ Счётчик генераций обновлён: {user.id} → {current_count + 1}")
+        else:
+            logger.warning(f"⚠️ Пользователь {user.id} не найден в Users для обновления счётчика")
+            
     except Exception as e:
         logger.error(f"❌ Ошибка обновления счётчика генераций: {e}")
 
